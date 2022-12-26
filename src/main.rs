@@ -8,12 +8,12 @@ use std::{
     collections::BTreeMap,
     rc::Rc,
     sync::{Arc, Mutex, RwLock},
+    io::copy,
 };
 use threadpool::ThreadPool;
 
-mod store;
 
-fn handle(mut c : TcpStream, ind : Arc<RwLock<BTreeMap<u64,u64>>>) {
+fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSocket, peers : Vec<String>) {
     let buf_reader = BufReader::new(&mut c);
 
     let http_request: Vec<_> = buf_reader
@@ -24,16 +24,69 @@ fn handle(mut c : TcpStream, ind : Arc<RwLock<BTreeMap<u64,u64>>>) {
 
     println!("Request: {:#?}", http_request);
 
+    let rparts : Vec<&str> = http_request[0].split(" ").collect::<Vec<&str>>();
+    if rparts[0] != "GET" && rparts[0] != "POST" {
+      return;
+    }
+    let url = rparts[1];
+    if &url[0..1] != "/" {
+      return;
+    }
+
+    let mut k : u64 = 0;
+    let mut v : u64 = 0;
+    let mut gotv : bool = false;
+
+    if url.len() > 2 && &url[1..2] == "?" {
+      let qs = &url[2..];
+      let args = qs.split("&").collect::<Vec<&str>>();
+      for arg in args {
+        let kv = arg.split("=").collect::<Vec<&str>>();
+        let qk = kv[0].to_string();
+        let qv = kv[1].to_string();
+        if qk == "k" && qv.len() > 0 {
+          k = qv.parse::<u64>().expect("int");
+        }
+        if qk == "v" && qv.len() > 0 {
+          v = qv.parse::<u64>().expect("int");
+          gotv = true;
+        }
+      }
+    }
+
+    let mut ind = indx.write().expect("can't get index");
+    if gotv == false {
+      match ind.get(&k) {
+        Some(vopt) => { v = *vopt; }
+        None => { v = 0; }
+      }
+    }
+
+    if gotv {
+        ind.insert(k, v);
+        for peer in &peers {
+            let mut msg0 = u64::to_be_bytes(k);
+            let mut msg1 = u64::to_be_bytes(v);
+            let mut msg : [u8; 16] = [0u8; 16];
+            msg[0..8].copy_from_slice(&msg0);
+            msg[8..16].copy_from_slice(&msg1);
+            us.send_to(&msg, peer);
+        }
+    }
+
     let status = "HTTP/1.1 200 OK";
-    let contents = fs::read_to_string("hello.html").unwrap();
+    let mut contents = fs::read_to_string("index.html").unwrap();
+    contents = contents.replace("{k}", &k.to_string());
+    contents = contents.replace("{v}", &v.to_string());
     let length = contents.len();
 
     let response = format!("{status}\r\nContent-Length: {length}\r\n\r\n{contents}");
 
     c.write_all(response.as_bytes()).unwrap();
+
 }
 
-fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>) {
+fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>, peers : Vec<String>) {
     let mut buf = [0u8; 1024];
 
     loop {
@@ -92,11 +145,14 @@ fn main() {
       return;
     }
 
-    let us0 = UdpSocket::bind(hostport).expect(&format!("bind failed { }", hostport));
-    let us1 = us0.try_clone().expect("clone failed");
+    let us = UdpSocket::bind(hostport).expect(&format!("bind failed { }", hostport));
+    let us0 = us.try_clone().expect("clone failed");
     let ind1 = Arc::clone(&ind);
-    thread::spawn(|| { userver(us0, ind1); });
-    thread::spawn(|| { heartbeat(us1, peers); });
+    let peers1 = peers.clone();
+    thread::spawn(|| { userver(us0, ind1, peers1); });
+    let us1 = us.try_clone().expect("clone failed");
+    let peers2 = peers.clone();
+    thread::spawn(|| { heartbeat(us1, peers2); });
 
     let s = TcpListener::bind(hostport).unwrap();
 
@@ -104,6 +160,8 @@ fn main() {
     for c in s.incoming() {
         let c = c.unwrap();
         let ind2 = Arc::clone(&ind);
-	pool.execute(|| { handle(c, ind2); });
+        let peers3 = peers.clone();
+        let us3 = us.try_clone().expect("clone failed");
+	pool.execute(|| { handle(c, ind2, us3, peers3); });
     }
 }
