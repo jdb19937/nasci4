@@ -6,9 +6,7 @@ use std::{
     thread,
     time::Duration,
     collections::BTreeMap,
-    rc::Rc,
-    sync::{Arc, Mutex, RwLock},
-    io::copy,
+    sync::{Arc, RwLock},
 };
 use threadpool::ThreadPool;
 
@@ -22,7 +20,7 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSock
         .take_while(|line| !line.is_empty())
         .collect();
 
-    println!("Request: {:#?}", http_request);
+    // println!("Request: {:#?}", http_request);
 
     let rparts : Vec<&str> = http_request[0].split(" ").collect::<Vec<&str>>();
     if rparts[0] != "GET" && rparts[0] != "POST" {
@@ -35,7 +33,7 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSock
 
     let mut k : u64 = 0;
     let mut v : u64 = 0;
-    let mut gotv : bool = false;
+    let mut op = "get";
 
     if url.len() > 2 && &url[1..2] == "?" {
       let qs = &url[2..];
@@ -49,28 +47,30 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSock
         }
         if qk == "v" && qv.len() > 0 {
           v = qv.parse::<u64>().expect("int");
-          gotv = true;
+        }
+        if qk == "op" && qv == "set" {
+          op = "set";
         }
       }
     }
 
     let mut ind = indx.write().expect("can't get index");
-    if gotv == false {
+    if op == "get" {
       match ind.get(&k) {
         Some(vopt) => { v = *vopt; }
         None => { v = 0; }
       }
     }
 
-    if gotv {
+    if op == "set" {
         ind.insert(k, v);
         for peer in &peers {
-            let mut msg0 = u64::to_be_bytes(k);
-            let mut msg1 = u64::to_be_bytes(v);
+            let msg0 = u64::to_be_bytes(k);
+            let msg1 = u64::to_be_bytes(v);
             let mut msg : [u8; 16] = [0u8; 16];
             msg[0..8].copy_from_slice(&msg0);
             msg[8..16].copy_from_slice(&msg1);
-            us.send_to(&msg, peer);
+            us.send_to(&msg, peer).expect("send fail");
         }
     }
 
@@ -86,19 +86,19 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSock
 
 }
 
-fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>, peers : Vec<String>) {
+fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>, _peers : Vec<String>) {
     let mut buf = [0u8; 1024];
 
     loop {
         for elem in buf.iter_mut() { *elem = 0; }
-        let (result, src_addr) = us.recv_from(&mut buf).expect("recv failed");
+        let (result, _src_addr) = us.recv_from(&mut buf).expect("recv failed");
         if result != 16 {
             continue;
         }
         
-        let mut k = u64::from_be_bytes(buf[0..8].try_into().unwrap());
-        let mut v = u64::from_be_bytes(buf[8..16].try_into().unwrap());
-        println!("I received {}={} from {}!", k,v, src_addr);
+        let k = u64::from_be_bytes(buf[0..8].try_into().unwrap());
+        let v = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+        // println!("I received {}={} from {}!", k,v, src_addr);
         // us.send_to(b"hello", src_addr).expect("send_to failed");
 
         let mut ind = indx.write().expect("can't get index");
@@ -111,20 +111,20 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>, peers : Vec<
 }
 
 fn heartbeat(us : UdpSocket, peers : Vec<String>) {
-    let mut buf = [0u8; 1024];
+    // let buf = [0u8; 1024];
 
     loop {
-        println!("beat");
+        // println!("beat");
         thread::sleep(Duration::from_secs(5));
         for peer in &peers {
-            us.send_to(b"hello", peer);
+            us.send_to(b"hello", peer).expect("send fail");
         }
     }
 }
 
 
 fn main() {
-    let mut ind = Arc::new(RwLock::new(BTreeMap::<u64,u64>::new()));
+    let ind = Arc::new(RwLock::new(BTreeMap::<u64,u64>::new()));
 
     let args: Vec<String> = env::args().collect();
     let hostport = &args[1];

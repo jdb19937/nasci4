@@ -5,8 +5,19 @@
 
 <body>
 <form action="/">
-key: <input type="text" name=k value="{k}"><br/>
-val: <input type="text" name=v value="{v}"><br/>
-<input type="submit" value="get/set"/>
+<table>
+<tr>
+  <td>key:</td>
+  <td><input type="text" name=k value="{k}"></td>
+  <td><input type="submit" name="op" value="get"/></td>
+</tr>
+
+<tr>
+  <td>val:</td>
+  <td><input type="text" name=v value="{v}"></td>
+  <td><input type="submit" name="op" value="set"/></td>
+</tr>
+
+</table>
 </body>
 </html>
