@@ -12,6 +12,7 @@ use threadpool::ThreadPool;
 mod hashtree;
 
 use crate::hashtree::HashTree;
+use crate::hashtree::ValueProof;
 
 fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers : Vec<String>, logfn : String) {
     let buf_reader = BufReader::new(&mut c);
@@ -25,7 +26,7 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers
     // println!("Request: {:#?}", http_request);
 
     let rparts : Vec<&str> = http_request[0].split(" ").collect::<Vec<&str>>();
-    if rparts[0] != "GET" && rparts[0] != "POST" {
+    if rparts.len() < 1 || rparts[0] != "GET" && rparts[0] != "POST" {
       return;
     }
     let url = rparts[1];
@@ -235,6 +236,30 @@ fn heartbeat(us : UdpSocket, indx : Arc<RwLock<HashTree>>, peers : Vec<String>) 
 
 
 fn main() {
+//    let mut v0 = ValueProof::new();
+//    let mut v1 = ValueProof::new();
+//
+//    v0.k = 100;
+//    v0.v = 100;
+//    v0.ts = 1000000;
+//    v0.seed = 5;
+//    v0.compute_hash();
+//
+//    v1.k = 100;
+//    v1.v = 100;
+//    v1.ts = 5;
+//    v1.seed = 5;
+//    v1.compute_hash();
+//
+//    if v0 < v1 {
+//        println!("v0<v1");
+//    } else {
+//        println!("v0>v1");
+//    }
+//    return;
+
+
+
     let ind = Arc::new(RwLock::new(HashTree::new()));
 
     let args: Vec<String> = env::args().collect();
