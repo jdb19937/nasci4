@@ -5,6 +5,7 @@ pub fn hash(key : u64) -> u64 {
     return ((key * key + 1) % 4294967291) + 1;
 }
 
+#[derive(Copy, Clone)]
 pub struct ValueProof {
     pub k : u64,
     pub v : u64,
@@ -67,7 +68,7 @@ impl PartialOrd for ValueProof {
     }
 }
 impl PartialEq for ValueProof {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         return false;
     }
 }
@@ -93,8 +94,12 @@ impl HashTree {
         return s;
     }
 
-    pub fn lookup(&self, key: u64) -> bool {
-        return self.key_present.contains_key(&key);
+    pub fn lookup(&self, key: u64) -> u64 {
+        if !self.key_proof.contains_key(&key) {
+            return 0;
+        }
+        let vp : &ValueProof = self.key_proof.get(&key).expect("key not present");
+        return vp.v;
     }
 
     pub fn prehash(&self, pre: u64) -> u64 {
@@ -121,17 +126,50 @@ impl HashTree {
         }
     }
 
+    pub fn keyproof(&self, key: u64) -> &ValueProof {
+//        if self.key_proof.contains_key(&key) {
+            return self.key_proof.get(&key).expect("key not present");
+//        } else {
+//            return &ValueProof::new();
+//        }
+    }
+
+    pub fn remove(&mut self, key : u64) {
+        let vp : &ValueProof = self.key_proof.get(&key).expect("key not present");
+
+        let h = vp.h;
+        self.hash_key.remove(&vp.h);
+        let k0 = vp.k; // ???
+        let k1 = vp.k; // ???
+        self.key_present.remove(&k0);
+        self.key_proof.remove(&k1);
+
+        for b in 0..63 {
+            let hpre = (h & ((1 << b) - 1)) | (1 << b);
+            let c = self.prefix_count[&hpre] - 1;
+            *self.prefix_count.entry(hpre).or_insert(0) = c;
+            // println!("inserting b={b} hpre={hpre}");
+        }
+
+        for b in 0..63 {
+            let hpre = (h & ((1 << b) - 1)) | (1 << b);
+            let c = self.prefix_hash[&hpre] ^ h;
+            *self.prefix_hash.entry(hpre).or_insert(0) = c;
+        }
+    }
 
     pub fn insert(&mut self, vp : &ValueProof) {
         let key = vp.k;
 
-        if self.lookup(key) {
-            return;
+        if self.lookup(key) > 0 {
+            self.remove(vp.k);
+            // return;
         }
 
-        let h = hash(key);
+        let h = vp.h;
         self.hash_key.insert(h, key);
         self.key_present.insert(key, true);
+        self.key_proof.insert(key, *vp);
 
         for b in 0..63 {
             let hpre = (h & ((1 << b) - 1)) | (1 << b);

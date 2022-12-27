@@ -14,7 +14,7 @@ mod hashtree;
 use crate::hashtree::HashTree;
 use crate::hashtree::ValueProof;
 
-fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers : Vec<String>, logfn : String) {
+fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, logfn : String) {
     let buf_reader = BufReader::new(&mut c);
 
     let http_request: Vec<_> = buf_reader
@@ -59,18 +59,17 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers
 
     let mut ind = indx.write().expect("can't get index");
     if op == "get" {
-      if ind.lookup(k) {
-        v = 1;
-      } else {
-        v = 0;
-      }
+      v = ind.lookup(k);
     }
 
     if op == "set" {
         let mut vp = ValueProof::new();
         vp.k = k;
+        vp.v = v;
+        vp.ts = 0;
+        vp.seed = 0;
+        vp.compute_hash();
         ind.insert(&vp);
-        v = 1;
     }
 
     let status = "HTTP/1.1 200 OK";
@@ -123,15 +122,23 @@ fn send_request_pkt(s : &UdpSocket, addr : String, pre : u64) {
     s.send_to(&msg, addr).expect("send fail");
 }
 
-fn send_key_pkt(s : &UdpSocket, addr : String, key : u64) {
+fn send_key_pkt(s : &UdpSocket, addr : String, vp : &ValueProof) {
+    let key = vp.k;
+
     println!("sending key packet addr={addr} key={key}");
 
-    let tgt = u64::to_be_bytes(key);
-
-    let mut msg : [u8; 16] = [0u8; 16];
+    let mut msg : [u8; 40] = [0u8; 40];
     let rop = u64::to_be_bytes(39);
     msg[0..8].copy_from_slice(&rop);
-    msg[8..16].copy_from_slice(&tgt);
+
+    let mut tmp = u64::to_be_bytes(vp.k);
+    msg[8..16].copy_from_slice(&tmp);
+    tmp = u64::to_be_bytes(vp.v);
+    msg[16..24].copy_from_slice(&tmp);
+    tmp = u64::to_be_bytes(vp.ts);
+    msg[24..32].copy_from_slice(&tmp);
+    tmp = u64::to_be_bytes(vp.seed);
+    msg[32..40].copy_from_slice(&tmp);
 
     s.send_to(&msg, addr).expect("send fail");
 }
@@ -189,24 +196,36 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
             println!("received request packet addr={src_addr} pre={pre}");
 
             if ind.precount(pre) == 1 {
-                send_key_pkt(&us, src_addr.to_string(), ind.hashkey(ind.prehash(pre)));
+                let k = ind.hashkey(ind.prehash(pre));
+                let vp = ind.keyproof(k);
+
+                send_key_pkt(&us, src_addr.to_string(), vp);
             } else if ind.precount(pre) > 1 {
                 send_expand_pkt(&us, src_addr.to_string(), pre, ind.prehash(pre), ind.prehash(pre * 2), ind.prehash(pre * 2 + 1));
             }
         }
 
         if op == 39 {
-            if pktlen != 16 {
+            if pktlen != 48 {
                 continue;
             }
 
-            let key = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+            let k = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+            let v = u64::from_be_bytes(buf[16..24].try_into().unwrap());
+            let ts = u64::from_be_bytes(buf[24..32].try_into().unwrap());
+            let seed = u64::from_be_bytes(buf[32..40].try_into().unwrap());
 
-            println!("received key packet addr={src_addr} key={key}");
-            let mut ind = indx.write().expect("can't get index");
+            println!("received key packet addr={src_addr} key={k} val={v} ts={ts} seed={seed}");
 
             let mut vp = ValueProof::new();
-            vp.k = key;
+            vp.k = k;
+            vp.v = v;
+            vp.ts = ts;
+            vp.seed = seed;
+            vp.compute_hash();
+
+            let mut ind = indx.write().expect("can't get index");
+
             ind.insert(&vp);
         }
     }
@@ -294,12 +313,10 @@ fn main() {
     for c in s.incoming() {
         let c = c.unwrap();
         let ind2 = Arc::clone(&ind);
-        let peers3 = peers.clone();
-        let us3 = us.try_clone().expect("clone failed");
         let mut logfn = String::new();
         logfn.push_str("log.");
         logfn.push_str(hostport);
         logfn.push_str(".txt");
-	pool.execute(|| { handle(c, ind2, us3, peers3, logfn); });
+	pool.execute(|| { handle(c, ind2, logfn); });
     }
 }
