@@ -90,6 +90,48 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers
 
 }
 
+fn send_expand_pkt(s : &UdpSocket, addr : String, pre : u64, h : u64, hl : u64, hr : u64) {
+    let tgt = u64::to_be_bytes(pre);
+    let root = u64::to_be_bytes(h);
+    let left = u64::to_be_bytes(hl);
+    let right = u64::to_be_bytes(hr);
+
+    let mut msg : [u8; 40] = [0u8; 40];
+    let rop = u64::to_be_bytes(37);
+    msg[0..8].copy_from_slice(&rop);
+    msg[8..16].copy_from_slice(&tgt);
+    msg[16..24].copy_from_slice(&root);
+    msg[24..32].copy_from_slice(&left);
+    msg[32..40].copy_from_slice(&right);
+
+    s.send_to(&msg, addr).expect("send fail");
+}
+
+fn send_request_pkt(s : &UdpSocket, addr : String, pre : u64) {
+    let tgt = u64::to_be_bytes(pre);
+
+    let mut msg : [u8; 16] = [0u8; 16];
+    let rop = u64::to_be_bytes(38);
+    msg[0..8].copy_from_slice(&rop);
+    msg[8..16].copy_from_slice(&tgt);
+
+    s.send_to(&msg, addr).expect("send fail");
+}
+
+fn send_key_pkt(s : &UdpSocket, addr : String, key : u64) {
+    let tgt = u64::to_be_bytes(key);
+
+    let mut msg : [u8; 16] = [0u8; 16];
+    let rop = u64::to_be_bytes(39);
+    msg[0..8].copy_from_slice(&rop);
+    msg[8..16].copy_from_slice(&tgt);
+
+    s.send_to(&msg, addr).expect("send fail");
+}
+
+
+
+
 fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
     let mut buf = [0u8; 1024];
 
@@ -118,20 +160,10 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
 
             if ind.prehash(pre) != h {
                 if ind.prehash(prel) != hl {
-                    let op = u64::to_be_bytes(38);
-                    let tgt = u64::to_be_bytes(prel);
-                    let mut msg : [u8; 16] = [0u8; 16];
-                    msg[0..8].copy_from_slice(&op);
-                    msg[8..16].copy_from_slice(&tgt);
-                    us.send_to(&msg, src_addr).expect("send_to failed");
+                    send_request_pkt(&us, src_addr.to_string(), prel);
                 }
                 if ind.prehash(prer) != hr {
-                    let op = u64::to_be_bytes(38);
-                    let tgt = u64::to_be_bytes(prer);
-                    let mut msg : [u8; 16] = [0u8; 16];
-                    msg[0..8].copy_from_slice(&op);
-                    msg[8..16].copy_from_slice(&tgt);
-                    us.send_to(&msg, src_addr).expect("send_to failed");
+                    send_request_pkt(&us, src_addr.to_string(), prer);
                 }
             }
         }
@@ -145,20 +177,11 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
 
             let pre = u64::from_be_bytes(buf[8..16].try_into().unwrap());
 
-            let tgt = u64::to_be_bytes(pre);
-            let root = u64::to_be_bytes(ind.prehash(pre));
-            let left = u64::to_be_bytes(ind.prehash(pre * 2));
-            let right = u64::to_be_bytes(ind.prehash(pre * 2 + 1));
-    
-            let mut msg : [u8; 40] = [0u8; 40];
-            let rop = u64::to_be_bytes(37);
-            msg[0..8].copy_from_slice(&rop);
-            msg[8..16].copy_from_slice(&tgt);
-            msg[16..24].copy_from_slice(&root);
-            msg[24..32].copy_from_slice(&left);
-            msg[32..40].copy_from_slice(&right);
-    
-            us.send_to(&msg, src_addr).expect("send fail");
+            if ind.precount(pre) == 1 {
+                send_key_pkt(&us, src_addr.to_string(), ind.hashkey(ind.prehash(pre)));
+            } else if ind.precount(pre) > 1 {
+                send_expand_pkt(&us, src_addr.to_string(), pre, ind.prehash(pre), ind.prehash(pre * 2), ind.prehash(pre * 2 + 1));
+            }
         }
     }
 }
@@ -172,21 +195,8 @@ fn heartbeat(us : UdpSocket, indx : Arc<RwLock<HashTree>>, peers : Vec<String>) 
 
         let ind = indx.read().expect("can't get index");
 
-        let op = u64::to_be_bytes(37);
-        let pre = u64::to_be_bytes(1);
-        let root = u64::to_be_bytes(ind.prehash(1));
-        let left = u64::to_be_bytes(ind.prehash(2));
-        let right = u64::to_be_bytes(ind.prehash(3));
-
         for peer in &peers {
-            let mut msg : [u8; 40] = [0u8; 40];
-            msg[0..8].copy_from_slice(&op);
-            msg[8..16].copy_from_slice(&pre);
-            msg[16..24].copy_from_slice(&root);
-            msg[24..32].copy_from_slice(&left);
-            msg[32..40].copy_from_slice(&right);
-
-            us.send_to(&msg, peer).expect("send fail");
+            send_expand_pkt(&us, peer.to_string(), 1, ind.prehash(1), ind.prehash(2), ind.prehash(3));
         }
     }
 }
