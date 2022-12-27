@@ -78,6 +78,7 @@ pub struct HashTree {
   pub prefix_count : BTreeMap<u64,u64>,
   pub prefix_hash : BTreeMap<u64,u64>,
   pub hash_key : BTreeMap<u64,u64>,
+  pub key_proof : BTreeMap<u64,ValueProof>,
 }
 
 impl HashTree {
@@ -87,6 +88,7 @@ impl HashTree {
             prefix_hash: BTreeMap::<u64,u64>::new(),
             key_present: BTreeMap::<u64,bool>::new(),
             hash_key: BTreeMap::<u64,u64>::new(),
+            key_proof: BTreeMap::<u64,ValueProof>::new(),
         };
         return s;
     }
@@ -120,7 +122,9 @@ impl HashTree {
     }
 
 
-    pub fn insert(&mut self, key: u64) {
+    pub fn insert(&mut self, vp : &ValueProof) {
+        let key = vp.k;
+
         if self.lookup(key) {
             return;
         }

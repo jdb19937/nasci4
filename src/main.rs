@@ -67,16 +67,10 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers
     }
 
     if op == "set" {
-        ind.insert(k);
+        let mut vp = ValueProof::new();
+        vp.k = k;
+        ind.insert(&vp);
         v = 1;
-        for peer in &peers {
-            let msg0 = u64::to_be_bytes(k);
-            let msg1 = u64::to_be_bytes(v);
-            let mut msg : [u8; 16] = [0u8; 16];
-            msg[0..8].copy_from_slice(&msg0);
-            msg[8..16].copy_from_slice(&msg1);
-            us.send_to(&msg, peer).expect("send fail");
-        }
     }
 
     let status = "HTTP/1.1 200 OK";
@@ -210,7 +204,10 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
 
             println!("received key packet addr={src_addr} key={key}");
             let mut ind = indx.write().expect("can't get index");
-            ind.insert(key);
+
+            let mut vp = ValueProof::new();
+            vp.k = key;
+            ind.insert(&vp);
         }
     }
 }
