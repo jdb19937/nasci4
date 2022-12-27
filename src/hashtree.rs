@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 use std::cmp::Ordering;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 pub fn hash(key : u64) -> u64 {
     return ((key * key + 1) % 4294967291) + 1;
@@ -19,48 +21,83 @@ impl ValueProof {
         return ValueProof { k: 0, v: 0, ts: 0, seed: 0, h: 0 };
     }
 
+    pub fn is_past_time(&self) -> bool {
+        let slack = 2;
+        let now : u64 = SystemTime::now().duration_since(UNIX_EPOCH).expect("AD").as_secs();
+        return self.ts < now + slack
+    }
+    pub fn age(&self) -> i64 {
+        let slack = 2;
+        let now : u64 = SystemTime::now().duration_since(UNIX_EPOCH).expect("AD").as_secs();
+        let dt = (now + slack - self.ts) as i64;
+        return dt;
+    }
+
     pub fn compute_hash(&mut self) {
         self.h = hash(self.k ^ hash(self.v ^ hash(self.ts ^ hash(self.seed)))); 
     }
+    pub fn hash_is_valid(&self) -> bool {
+        let newh = hash(self.k ^ hash(self.v ^ hash(self.ts ^ hash(self.seed)))); 
+        return self.h == newh;
+    }
+    pub fn is_valid(&self) -> bool {
+        self.is_past_time() && self.hash_is_valid()
+    }
+
+    pub fn logwork(&self) -> f64 {
+      // log(1/h * exp(-decay * age))
+      // -log(h) - decay * age
+      // let decay = 0.0001;
+
+      let decay = 1.0;
+      let fh = self.h as f64;
+      let lfh = f64::ln(fh);
+      let top = 4.0 * ((1 << 30) as f64);
+      let ltop = f64::ln(top);
+      let fage = self.age() as f64;
+println!("fh={fh} lfh={lfh} top={top} ltop={ltop} fage={fage}");
+      return ltop - lfh - decay * fage;
+    }
 
     pub fn worth_more(&self, other : &ValueProof) -> bool {
-        let base = 1.00001;
+        // let decay = 0.0001;
+        let decay = 1.0;
 
-        // decay = -log(base)
         // 1/h0 * exp(-decay * (now-t0)) > 1/h1 * exp(-decay * (now-t1)) 
         // h1 > h0 * exp(decay * (now-t0) -decay * (now-t1)) 
         // h1 > h0 * exp(decay * ((now-t0)-(now-t1)) 
         // h1 > h0 * exp(decay * (t1 - t0))
         // h0 * exp(decay * (t1 - t0)) < h1
+        // log(h0) + decay * dt < log(h1)
 
-        let h64 = self.h as f64;
-        let o64 = other.h as f64;
+        let fh0 = self.h as f64;
+        let flh0 = f64::ln(fh0);
+        let fh1 = other.h as f64;
+        let flh1 = f64::ln(fh1);
 
-//println!("ts0={} ts1={}", self.ts, other.ts);
+        let ft0 = self.ts as f64;
+        let ft1 = other.ts as f64;
 
-        if self.ts > other.ts {
-            let dt : f64 = (self.ts - other.ts) as f64;
-//println!("dt={} pf={} h64={h64} o64={o64} h64r={}", dt, f64::powf(base, dt), f64::powf(base, dt) * h64);
-            return h64 * f64::powf(base, -dt) < o64;
-        } else {
-            let dt : f64 = (other.ts - self.ts) as f64;
-            return h64 * f64::powf(base, dt) < o64;
-        }
+        let dt = ft1 - ft0;
+        return flh0 + decay * dt < flh1;
     }
 }
 
-impl Ord for ValueProof {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.worth_more(other) {
-             Ordering::Greater
-        } else {
-             Ordering::Less
-        }
-    }
-}
+//impl Ord for ValueProof {
+//    fn cmp(&self, other: &Self) -> Ordering {
+//        if self.worth_more(other) {
+//             Ordering::Greater
+//        } else {
+//             Ordering::Less
+//        }
+//    }
+//}
+
 impl PartialOrd for ValueProof {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.worth_more(other) {
+        if self.k != other.k {
+             None
+        } else if self.worth_more(other) {
              Some(Ordering::Greater)
         } else {
              Some(Ordering::Less)
@@ -94,12 +131,12 @@ impl HashTree {
         return s;
     }
 
-    pub fn lookup(&self, key: u64) -> u64 {
+    pub fn lookup(&self, key: u64) -> Option<&ValueProof> {
         if !self.key_proof.contains_key(&key) {
-            return 0;
+            return None;
         }
         let vp : &ValueProof = self.key_proof.get(&key).expect("key not present");
-        return vp.v;
+        return Some(vp);
     }
 
     pub fn prehash(&self, pre: u64) -> u64 {
@@ -161,7 +198,15 @@ impl HashTree {
     pub fn insert(&mut self, vp : &ValueProof) {
         let key = vp.k;
 
-        if self.lookup(key) > 0 {
+        if !vp.is_valid() {
+            return;
+        }
+
+        if self.key_proof.contains_key(&key) {
+            let oldvp : &ValueProof = self.key_proof.get(&key).expect("key not present");
+            if !vp.worth_more(oldvp) {
+                return;
+            }
             self.remove(vp.k);
             // return;
         }

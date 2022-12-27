@@ -5,6 +5,7 @@ use std::{
     net::{TcpListener, TcpStream, UdpSocket},
     thread,
     time::Duration,
+    time::SystemTime, time::UNIX_EPOCH,
     sync::{Arc, RwLock},
 };
 use threadpool::ThreadPool;
@@ -36,6 +37,10 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, logfn : String) {
 
     let mut k : u64 = 0;
     let mut v : u64 = 0;
+    let mut ts : u64 = 0;
+    let mut logwork : f64 = 0.0;
+    let mut seed : u64 = 0;
+    let mut h : u64 = 0;
     let mut op = "get";
 
     if url.len() > 2 && &url[1..2] == "?" {
@@ -58,24 +63,39 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, logfn : String) {
     }
 
     let mut ind = indx.write().expect("can't get index");
-    if op == "get" {
-      v = ind.lookup(k);
-    }
 
     if op == "set" {
         let mut vp = ValueProof::new();
         vp.k = k;
         vp.v = v;
-        vp.ts = 0;
+        vp.ts = SystemTime::now().duration_since(UNIX_EPOCH).expect("AD").as_secs();
         vp.seed = 0;
         vp.compute_hash();
         ind.insert(&vp);
+    }
+
+    if true {
+      let ovp = ind.lookup(k);
+      if !ovp.is_none() {
+          let vp : &ValueProof = ovp.expect("found");
+          v = vp.v;
+          h = vp.h;
+          seed = vp.seed;
+          ts = vp.ts;
+          logwork = vp.logwork();
+      } else {
+          v = 0;
+      }
     }
 
     let status = "HTTP/1.1 200 OK";
     let mut contents = fs::read_to_string("index.html").unwrap();
     contents = contents.replace("{k}", &k.to_string());
     contents = contents.replace("{v}", &v.to_string());
+    contents = contents.replace("{ts}", &ts.to_string());
+    contents = contents.replace("{seed}", &seed.to_string());
+    contents = contents.replace("{h}", &h.to_string());
+    contents = contents.replace("{logwork}", &logwork.to_string());
 
     let logstr = fs::read_to_string(logfn).unwrap();
     contents.push_str("<hr><pre>");
@@ -206,7 +226,7 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
         }
 
         if op == 39 {
-            if pktlen != 48 {
+            if pktlen != 40 {
                 continue;
             }
 
