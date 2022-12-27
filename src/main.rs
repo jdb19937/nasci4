@@ -13,7 +13,7 @@ mod hashtree;
 
 use crate::hashtree::HashTree;
 
-fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers : Vec<String>) {
+fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers : Vec<String>, logfn : String) {
     let buf_reader = BufReader::new(&mut c);
 
     let http_request: Vec<_> = buf_reader
@@ -82,6 +82,12 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers
     let mut contents = fs::read_to_string("index.html").unwrap();
     contents = contents.replace("{k}", &k.to_string());
     contents = contents.replace("{v}", &v.to_string());
+
+    let logstr = fs::read_to_string(logfn).unwrap();
+    contents.push_str("<hr><pre>");
+    contents.push_str(&logstr);
+    contents.push_str("</pre></body></html>");
+
     let length = contents.len();
 
     let response = format!("{status}\r\nContent-Length: {length}\r\n\r\n{contents}");
@@ -91,6 +97,8 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers
 }
 
 fn send_expand_pkt(s : &UdpSocket, addr : String, pre : u64, h : u64, hl : u64, hr : u64) {
+    println!("sending expand packet addr={addr} pre={pre} h={h} hl={hl} hr={hr}");
+
     let tgt = u64::to_be_bytes(pre);
     let root = u64::to_be_bytes(h);
     let left = u64::to_be_bytes(hl);
@@ -108,6 +116,8 @@ fn send_expand_pkt(s : &UdpSocket, addr : String, pre : u64, h : u64, hl : u64, 
 }
 
 fn send_request_pkt(s : &UdpSocket, addr : String, pre : u64) {
+    println!("sending request packet addr={addr} pre={pre}");
+
     let tgt = u64::to_be_bytes(pre);
 
     let mut msg : [u8; 16] = [0u8; 16];
@@ -119,6 +129,8 @@ fn send_request_pkt(s : &UdpSocket, addr : String, pre : u64) {
 }
 
 fn send_key_pkt(s : &UdpSocket, addr : String, key : u64) {
+    println!("sending key packet addr={addr} key={key}");
+
     let tgt = u64::to_be_bytes(key);
 
     let mut msg : [u8; 16] = [0u8; 16];
@@ -156,13 +168,15 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
             let hl = u64::from_be_bytes(buf[24..32].try_into().unwrap());
             let hr = u64::from_be_bytes(buf[32..40].try_into().unwrap());
 
+            println!("received expand packet addr={src_addr} pre={pre} h={h} hl={hl} hr={hr}");
+
             let ind = indx.read().expect("can't get index");
 
             if ind.prehash(pre) != h {
-                if ind.prehash(prel) != hl {
+                if hl != 0 && ind.prehash(prel) != hl {
                     send_request_pkt(&us, src_addr.to_string(), prel);
                 }
-                if ind.prehash(prer) != hr {
+                if hr != 0 && ind.prehash(prer) != hr {
                     send_request_pkt(&us, src_addr.to_string(), prer);
                 }
             }
@@ -177,27 +191,45 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
 
             let pre = u64::from_be_bytes(buf[8..16].try_into().unwrap());
 
+            println!("received request packet addr={src_addr} pre={pre}");
+
             if ind.precount(pre) == 1 {
                 send_key_pkt(&us, src_addr.to_string(), ind.hashkey(ind.prehash(pre)));
             } else if ind.precount(pre) > 1 {
                 send_expand_pkt(&us, src_addr.to_string(), pre, ind.prehash(pre), ind.prehash(pre * 2), ind.prehash(pre * 2 + 1));
             }
         }
+
+        if op == 39 {
+            if pktlen != 16 {
+                continue;
+            }
+
+            let key = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+
+            println!("received key packet addr={src_addr} key={key}");
+            let mut ind = indx.write().expect("can't get index");
+            ind.insert(key);
+        }
     }
 }
 
 fn heartbeat(us : UdpSocket, indx : Arc<RwLock<HashTree>>, peers : Vec<String>) {
     // let buf = [0u8; 1024];
+    let duration = 10;
 
     loop {
-        // println!("beat");
-        thread::sleep(Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(duration));
+        // println!("starting heartbeats");
 
         let ind = indx.read().expect("can't get index");
 
         for peer in &peers {
+            // println!("running heartbeat for addr={peer}");
             send_expand_pkt(&us, peer.to_string(), 1, ind.prehash(1), ind.prehash(2), ind.prehash(3));
+            // println!("done with heartbeat for addr={peer}");
         }
+        // println!("done with heartbeats, sleeping for {duration} seconds");
     }
 }
 
@@ -220,7 +252,7 @@ fn main() {
     }
 
     if foundself == 0 {
-      println!("self not found in peers.txt");
+      // println!("self not found in peers.txt");
       return;
     }
 
@@ -242,6 +274,10 @@ fn main() {
         let ind2 = Arc::clone(&ind);
         let peers3 = peers.clone();
         let us3 = us.try_clone().expect("clone failed");
-	pool.execute(|| { handle(c, ind2, us3, peers3); });
+        let mut logfn = String::new();
+        logfn.push_str("log.");
+        logfn.push_str(hostport);
+        logfn.push_str(".txt");
+	pool.execute(|| { handle(c, ind2, us3, peers3, logfn); });
     }
 }

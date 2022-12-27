@@ -68,6 +68,7 @@ impl HashTree {
             } else {
                 self.prefix_count.insert(hpre, 1);
             }
+            // println!("inserting b={b} hpre={hpre}");
         }
 
         for b in 0..63 {
