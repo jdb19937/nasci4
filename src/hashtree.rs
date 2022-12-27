@@ -24,6 +24,14 @@ impl HashTree {
         return self.key_present.contains_key(&key);
     }
 
+    pub fn prehash(&self, pre: u64) -> u64 {
+        if self.prefix_hash.contains_key(&pre) {
+            return *self.prefix_hash.get(&pre).expect("key not present");
+        } else {
+            return 0;
+        }
+    }
+
     pub fn insert(&mut self, key: u64) {
         if self.lookup(key) {
             return;

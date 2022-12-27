@@ -95,34 +95,98 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
 
     loop {
         for elem in buf.iter_mut() { *elem = 0; }
-        let (result, _src_addr) = us.recv_from(&mut buf).expect("recv failed");
-        if result != 16 {
+        let (pktlen, src_addr) = us.recv_from(&mut buf).expect("recv failed");
+        if pktlen < 16 {
             continue;
         }
         
-        let k = u64::from_be_bytes(buf[0..8].try_into().unwrap());
-        //let v = 1;
-        // let v = u64::from_be_bytes(buf[8..16].try_into().unwrap());
-        // println!("I received {}={} from {}!", k,v, src_addr);
-        // us.send_to(b"hello", src_addr).expect("send_to failed");
+        let op = u64::from_be_bytes(buf[0..8].try_into().unwrap());
 
-        let mut ind = indx.write().expect("can't get index");
-        ind.insert(k);
-//        if let Some(vp) = ind.get(&k) {
-//            let mut wp = vp.lock().expect("can't get element");
-//            *wp = v;
-//        }
+        if op == 37 {
+            if pktlen != 40 {
+                continue;
+            }
+
+            let pre = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+            let prel = pre * 2;
+            let prer = pre * 2 + 1;
+            let h = u64::from_be_bytes(buf[16..24].try_into().unwrap());
+            let hl = u64::from_be_bytes(buf[24..32].try_into().unwrap());
+            let hr = u64::from_be_bytes(buf[32..40].try_into().unwrap());
+
+            let ind = indx.read().expect("can't get index");
+
+            if ind.prehash(pre) != h {
+                if ind.prehash(prel) != hl {
+                    let op = u64::to_be_bytes(38);
+                    let tgt = u64::to_be_bytes(prel);
+                    let mut msg : [u8; 16] = [0u8; 16];
+                    msg[0..8].copy_from_slice(&op);
+                    msg[8..16].copy_from_slice(&tgt);
+                    us.send_to(&msg, src_addr).expect("send_to failed");
+                }
+                if ind.prehash(prer) != hr {
+                    let op = u64::to_be_bytes(38);
+                    let tgt = u64::to_be_bytes(prer);
+                    let mut msg : [u8; 16] = [0u8; 16];
+                    msg[0..8].copy_from_slice(&op);
+                    msg[8..16].copy_from_slice(&tgt);
+                    us.send_to(&msg, src_addr).expect("send_to failed");
+                }
+            }
+        }
+
+        if op == 38 {
+            let ind = indx.read().expect("can't get index");
+
+            if pktlen != 16 {
+                continue;
+            }
+
+            let pre = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+
+            let tgt = u64::to_be_bytes(pre);
+            let root = u64::to_be_bytes(ind.prehash(pre));
+            let left = u64::to_be_bytes(ind.prehash(pre * 2));
+            let right = u64::to_be_bytes(ind.prehash(pre * 2 + 1));
+    
+            let mut msg : [u8; 40] = [0u8; 40];
+            let rop = u64::to_be_bytes(37);
+            msg[0..8].copy_from_slice(&rop);
+            msg[8..16].copy_from_slice(&tgt);
+            msg[16..24].copy_from_slice(&root);
+            msg[24..32].copy_from_slice(&left);
+            msg[32..40].copy_from_slice(&right);
+    
+            us.send_to(&msg, src_addr).expect("send fail");
+        }
     }
 }
 
-fn heartbeat(us : UdpSocket, peers : Vec<String>) {
+fn heartbeat(us : UdpSocket, indx : Arc<RwLock<HashTree>>, peers : Vec<String>) {
     // let buf = [0u8; 1024];
 
     loop {
         // println!("beat");
         thread::sleep(Duration::from_secs(5));
+
+        let ind = indx.read().expect("can't get index");
+
+        let op = u64::to_be_bytes(37);
+        let pre = u64::to_be_bytes(1);
+        let root = u64::to_be_bytes(ind.prehash(1));
+        let left = u64::to_be_bytes(ind.prehash(2));
+        let right = u64::to_be_bytes(ind.prehash(3));
+
         for peer in &peers {
-            us.send_to(b"hello", peer).expect("send fail");
+            let mut msg : [u8; 40] = [0u8; 40];
+            msg[0..8].copy_from_slice(&op);
+            msg[8..16].copy_from_slice(&pre);
+            msg[16..24].copy_from_slice(&root);
+            msg[24..32].copy_from_slice(&left);
+            msg[32..40].copy_from_slice(&right);
+
+            us.send_to(&msg, peer).expect("send fail");
         }
     }
 }
@@ -157,7 +221,8 @@ fn main() {
     thread::spawn(|| { userver(us0, ind1, peers1); });
     let us1 = us.try_clone().expect("clone failed");
     let peers2 = peers.clone();
-    thread::spawn(|| { heartbeat(us1, peers2); });
+    let ind2 = Arc::clone(&ind);
+    thread::spawn(|| { heartbeat(us1, ind2, peers2); });
 
     let s = TcpListener::bind(hostport).unwrap();
 
