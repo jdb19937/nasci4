@@ -5,13 +5,15 @@ use std::{
     net::{TcpListener, TcpStream, UdpSocket},
     thread,
     time::Duration,
-    collections::BTreeMap,
     sync::{Arc, RwLock},
 };
 use threadpool::ThreadPool;
 
+mod hashtree;
 
-fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSocket, peers : Vec<String>) {
+use crate::hashtree::HashTree;
+
+fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, us : UdpSocket, peers : Vec<String>) {
     let buf_reader = BufReader::new(&mut c);
 
     let http_request: Vec<_> = buf_reader
@@ -56,14 +58,16 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSock
 
     let mut ind = indx.write().expect("can't get index");
     if op == "get" {
-      match ind.get(&k) {
-        Some(vopt) => { v = *vopt; }
-        None => { v = 0; }
+      if ind.lookup(k) {
+        v = 1;
+      } else {
+        v = 0;
       }
     }
 
     if op == "set" {
-        ind.insert(k, v);
+        ind.insert(k);
+        v = 1;
         for peer in &peers {
             let msg0 = u64::to_be_bytes(k);
             let msg1 = u64::to_be_bytes(v);
@@ -86,7 +90,7 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<BTreeMap<u64,u64>>>, us : UdpSock
 
 }
 
-fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>, _peers : Vec<String>) {
+fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
     let mut buf = [0u8; 1024];
 
     loop {
@@ -97,12 +101,13 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<BTreeMap::<u64,u64>>>, _peers : Vec
         }
         
         let k = u64::from_be_bytes(buf[0..8].try_into().unwrap());
-        let v = u64::from_be_bytes(buf[8..16].try_into().unwrap());
+        //let v = 1;
+        // let v = u64::from_be_bytes(buf[8..16].try_into().unwrap());
         // println!("I received {}={} from {}!", k,v, src_addr);
         // us.send_to(b"hello", src_addr).expect("send_to failed");
 
         let mut ind = indx.write().expect("can't get index");
-        ind.insert(k, v);
+        ind.insert(k);
 //        if let Some(vp) = ind.get(&k) {
 //            let mut wp = vp.lock().expect("can't get element");
 //            *wp = v;
@@ -124,7 +129,7 @@ fn heartbeat(us : UdpSocket, peers : Vec<String>) {
 
 
 fn main() {
-    let ind = Arc::new(RwLock::new(BTreeMap::<u64,u64>::new()));
+    let ind = Arc::new(RwLock::new(HashTree::new()));
 
     let args: Vec<String> = env::args().collect();
     let hostport = &args[1];
