@@ -47,7 +47,7 @@ learning rust by writing this key-value store using time-decaying hashcash to es
 
 ## Run
 	./start.sh  # launches 3 instances on ports 5555, 5556, 5557
-        ./fill.sh   # fills instance on 5555 with 50 key-value pairs
+	./fill.sh   # fills instance on 5555 with 50 key-value pairs
 	./stop.sh   # kill all the instances
 
 
