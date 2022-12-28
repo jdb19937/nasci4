@@ -17,29 +17,29 @@ About:
 
 	Each key-value pair has an associated proof-of-work and timestamp.
 	With a constant decay rate specified, from those there can be computed 
-	value used to resolve conflicts,
+	a priority value used to resolve conflicts,
 
-	value = exp(-decay * age) / hash
+	priority = exp(-decay * age) / hash
 
 	where decay is a constant frequency, age is a time, and hash is
 	an integer value of the hash function (that the proof-of-work
-	creator attempts to minimize).  The higher the value, the higher
-	the priority of the update.  This is a consistent ordering
+	creator attempts to minimize).  The higher the "priority" value,
+	the higher the priority of the update.  This is a consistent ordering
 	across nodes, no matter what is the time skew, because two
-	values can be compared using absolute timestamps without
+	priorities can be compared using absolute timestamps without
 	reference to the system time.
 
 	The system time is used to ensure that only updates with a
 	timestamp in the past are processed (so if there is a time skew,
 	updates can appear on the future-skewed nodes first, but conflicts
-	resolve as soon as ages are positive).
+	resolve as soon as ages are positive).  So a conflict can be
+	present only for as long a duration as the time skew.
 
-	The idea is that you can "rent" a key for an expected amount of
+	The idea is that you can "rent" a key for some expected amount of
 	time by creating a proof-of-work, because it would require an
 	even harder proof-of-work to immediately override it.
 	With time passing, a key becomes easier to override because
 	its value is decaying with age.
-
 
 Build:
 	cargo build
@@ -57,7 +57,9 @@ Demo:
 	To retrieve the value for a key, enter the key (an integer),
 	and click "get".  fill.sh already inserted keys 5 through 54,
 	with each value equal to the key.  So if you "get" with key=43,
-	it should return with val=43.
+	it should return with val=43.  fill.sh performed the updates on
+	the server on port 5555, but each update should replicate to the
+	other two servers soon after fill.sh is run.
 
 	To assign the value of a key, enter the key and the value
 	(both integers), and click "set".  The server will
