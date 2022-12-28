@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-const DECAY : f64 = 0.0001;
-const SLACK : u64 = 2;
+const DECAY: f64 = 0.0001;
+const SLACK: u64 = 2;
 
 pub fn hash(key: u64) -> u64 {
     let mkey = key % 4294967291;
