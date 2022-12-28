@@ -160,8 +160,7 @@ impl HashTree {
     }
 
     pub fn remove(&mut self, key : u64) {
-        assert!(false);
-
+        assert!(self.key_proof.contains_key(&key));
         let vp : &ValueProof = self.key_proof.get(&key).expect("key not present");
 
         let h = vp.h;

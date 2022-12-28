@@ -26,13 +26,17 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, logfn : String) {
 
     // println!("Request: {:#?}", http_request);
 
+    if http_request.len() < 1 {
+        return;
+    }
+
     let rparts : Vec<&str> = http_request[0].split(" ").collect::<Vec<&str>>();
     if rparts.len() < 1 || rparts[0] != "GET" && rparts[0] != "POST" {
-      return;
+        return;
     }
     let url = rparts[1];
     if &url[0..1] != "/" {
-      return;
+        return;
     }
 
     let mut k : u64 = 0;
