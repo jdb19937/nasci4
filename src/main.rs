@@ -258,8 +258,8 @@ fn userver(us: UdpSocket, indx: Arc<RwLock<HashTree>>, _peers: Vec<String>) {
             if h > 0 {
                 let k = ind.hashkey(h);
                 if k > 0 {
-                    let hl = ind.prehash(pre * 2);
-                    let hr = ind.prehash(pre * 2 + 1);
+                    //let hl = ind.prehash(pre * 2);
+                    //let hr = ind.prehash(pre * 2 + 1);
                     //assert!(hl == 0 || hr == 0);
 
                     let vp = ind.keyproof(k);
@@ -267,8 +267,6 @@ fn userver(us: UdpSocket, indx: Arc<RwLock<HashTree>>, _peers: Vec<String>) {
                 } else {
                     let hl = ind.prehash(pre * 2);
                     let hr = ind.prehash(pre * 2 + 1);
-                    //assert!(hl > 0);
-                    //assert!(hr > 0);
 
                     send_expand_pkt(&us, src_addr.to_string(), pre, h, hl, hr);
                 }
