@@ -70,7 +70,7 @@ impl ValueProof {
         let top = 4.0 * ((1 << 30) as f64);
         let ltop = f64::ln(top);
         let fage = self.age() as f64;
-        println!("fh={fh} lfh={lfh} top={top} ltop={ltop} fage={fage}");
+        // println!("fh={fh} lfh={lfh} top={top} ltop={ltop} fage={fage}");
         return ltop - lfh - decay * fage;
     }
 

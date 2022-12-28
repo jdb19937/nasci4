@@ -86,21 +86,21 @@ fn handle(mut c: TcpStream, indx: Arc<RwLock<HashTree>>, logfn: String) {
 
         vp.seed = 0;
         vp.compute_hash();
-        println!(
-            "here seed={} vpl={} mw={}",
-            vp.seed,
-            vp.logwork(),
-            minlogwork
-        );
+        //println!(
+        //    "here seed={} vpl={} mw={}",
+        //    vp.seed,
+        //    vp.logwork(),
+        //    minlogwork
+        //);
 
         while vp.logwork() < minlogwork {
             vp.seed = rng.gen::<u64>();
-            println!(
-                "here seed={} vpl={} mw={}",
-                vp.seed,
-                vp.logwork(),
-                minlogwork
-            );
+            //println!(
+            //    "here seed={} vpl={} mw={}",
+            //    vp.seed,
+            //    vp.logwork(),
+            //    minlogwork
+            //);
             vp.compute_hash();
         }
 
