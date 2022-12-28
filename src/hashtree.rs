@@ -218,10 +218,8 @@ impl HashTree {
             if hpre > 0 {
                 if self.prefix_hash.contains_key(&hpre) {
                     let c = self.prefix_hash[&hpre] ^ h;
-                    //println!("setting hpre={hpre} c={c}");
                     *self.prefix_hash.entry(hpre).or_insert(0) = c;
                 } else {
-                    //println!("setting hpre={hpre} c={h}");
                     self.prefix_hash.insert(hpre, h);
                 }
             }

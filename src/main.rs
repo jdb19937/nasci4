@@ -86,21 +86,9 @@ fn handle(mut c: TcpStream, indx: Arc<RwLock<HashTree>>, logfn: String) {
 
         vp.seed = 0;
         vp.compute_hash();
-        //println!(
-        //    "here seed={} vpl={} mw={}",
-        //    vp.seed,
-        //    vp.logwork(),
-        //    minlogwork
-        //);
 
         while vp.logwork() < minlogwork {
             vp.seed = rng.gen::<u64>();
-            //println!(
-            //    "here seed={} vpl={} mw={}",
-            //    vp.seed,
-            //    vp.logwork(),
-            //    minlogwork
-            //);
             vp.compute_hash();
         }
 
@@ -300,7 +288,6 @@ fn userver(us: UdpSocket, indx: Arc<RwLock<HashTree>>, _peers: Vec<String>) {
 }
 
 fn heartbeat(us: UdpSocket, indx: Arc<RwLock<HashTree>>, peers: Vec<String>) {
-    // let buf = [0u8; 1024];
     let duration = 10;
 
     loop {
@@ -328,28 +315,6 @@ fn heartbeat(us: UdpSocket, indx: Arc<RwLock<HashTree>>, peers: Vec<String>) {
 }
 
 fn main() {
-    //    let mut v0 = ValueProof::new();
-    //    let mut v1 = ValueProof::new();
-    //
-    //    v0.k = 100;
-    //    v0.v = 100;
-    //    v0.ts = 1000000;
-    //    v0.seed = 5;
-    //    v0.compute_hash();
-    //
-    //    v1.k = 100;
-    //    v1.v = 100;
-    //    v1.ts = 5;
-    //    v1.seed = 5;
-    //    v1.compute_hash();
-    //
-    //    if v0 < v1 {
-    //        println!("v0<v1");
-    //    } else {
-    //        println!("v0>v1");
-    //    }
-    //    return;
-
     let ind = Arc::new(RwLock::new(HashTree::new()));
 
     let args: Vec<String> = env::args().collect();
@@ -370,7 +335,7 @@ fn main() {
     }
 
     if foundself == 0 {
-        // println!("self not found in peers.txt");
+        println!("self not found in peers.txt");
         return;
     }
 
