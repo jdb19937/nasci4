@@ -1,7 +1,7 @@
 # nasci4
 learning rust by writing this key-value store using time-decaying hashcash to establish consensus
 
-About:
+##About
 	This is a key-value store with a web interface that demonstrates
 	eventual consistency and storage-rental using time-decaying
 	hashcash.  Key-value pairs are stored in a hashtree that is
@@ -42,16 +42,16 @@ About:
 	With time passing, a key becomes easier to override because
 	its value is decaying.
 
-Build:
+##Build
 	cargo build
 
-Run:
+##Run
 	./start.sh  # launches 3 instances on ports 5555, 5556, 5557
         ./fill.sh   # fills instance on 5555 with 50 key-value pairs
 	./stop.sh   # kill all the instances
 
 
-Demo:
+##Demo
 	Run ./start.sh, and then ./fill.sh, and point your browser at
 	http://localhost:5555/.
 
