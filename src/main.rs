@@ -113,6 +113,8 @@ fn handle(mut c : TcpStream, indx : Arc<RwLock<HashTree>>, logfn : String) {
 fn send_expand_pkt(s : &UdpSocket, addr : String, pre : u64, h : u64, hl : u64, hr : u64) {
     println!("sending expand packet addr={addr} pre={pre} h={h} hl={hl} hr={hr}");
 
+    assert!(h == hl ^ hr);
+
     let tgt = u64::to_be_bytes(pre);
     let root = u64::to_be_bytes(h);
     let left = u64::to_be_bytes(hl);
@@ -197,10 +199,16 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
             if ind.prehash(pre) != h {
                 if hl != 0 && ind.prehash(prel) != hl {
                     send_request_pkt(&us, src_addr.to_string(), prel);
+                } else {
+                    println!("not sending reqest packet for hl={hl} prel={prel}");
                 }
                 if hr != 0 && ind.prehash(prer) != hr {
                     send_request_pkt(&us, src_addr.to_string(), prer);
+                } else {
+                    println!("not sending reqest packet for hr={hr} prer={prer}");
                 }
+            } else {
+                println!("h={h} matches index");
             }
         }
 
@@ -215,13 +223,24 @@ fn userver(us : UdpSocket, indx : Arc<RwLock<HashTree>>, _peers : Vec<String>) {
 
             println!("received request packet addr={src_addr} pre={pre}");
 
-            if ind.precount(pre) == 1 {
-                let k = ind.hashkey(ind.prehash(pre));
-                let vp = ind.keyproof(k);
+            let h = ind.prehash(pre);
+            if h > 0 {
+                let k = ind.hashkey(h);
+                if k > 0 {
+                    let hl = ind.prehash(pre * 2);
+                    let hr = ind.prehash(pre * 2 + 1);
+                    //assert!(hl == 0 || hr == 0);
 
-                send_key_pkt(&us, src_addr.to_string(), vp);
-            } else if ind.precount(pre) > 1 {
-                send_expand_pkt(&us, src_addr.to_string(), pre, ind.prehash(pre), ind.prehash(pre * 2), ind.prehash(pre * 2 + 1));
+                    let vp = ind.keyproof(k);
+                    send_key_pkt(&us, src_addr.to_string(), vp);
+                } else {
+                    let hl = ind.prehash(pre * 2);
+                    let hr = ind.prehash(pre * 2 + 1);
+                    //assert!(hl > 0);
+                    //assert!(hr > 0);
+
+                    send_expand_pkt(&us, src_addr.to_string(), pre, h, hl, hr);
+                }
             }
         }
 
@@ -262,9 +281,11 @@ fn heartbeat(us : UdpSocket, indx : Arc<RwLock<HashTree>>, peers : Vec<String>) 
         let ind = indx.read().expect("can't get index");
 
         for peer in &peers {
-            // println!("running heartbeat for addr={peer}");
-            send_expand_pkt(&us, peer.to_string(), 1, ind.prehash(1), ind.prehash(2), ind.prehash(3));
-            // println!("done with heartbeat for addr={peer}");
+            println!("running heartbeat for addr={peer}");
+            if ind.prehash(1) > 0 {
+                send_expand_pkt(&us, peer.to_string(), 1, ind.prehash(1), ind.prehash(2), ind.prehash(3));
+            }
+            println!("done with heartbeat for addr={peer}");
         }
         // println!("done with heartbeats, sleeping for {duration} seconds");
     }

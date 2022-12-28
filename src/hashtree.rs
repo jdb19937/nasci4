@@ -112,19 +112,15 @@ impl PartialEq for ValueProof {
 impl Eq for ValueProof { }
 
 pub struct HashTree {
-  pub key_present : BTreeMap<u64,bool>,
-  pub prefix_count : BTreeMap<u64,u64>,
-  pub prefix_hash : BTreeMap<u64,u64>,
-  pub hash_key : BTreeMap<u64,u64>,
-  pub key_proof : BTreeMap<u64,ValueProof>,
+    pub prefix_hash : BTreeMap<u64,u64>,
+    pub hash_key : BTreeMap<u64,u64>,
+    pub key_proof : BTreeMap<u64,ValueProof>,
 }
 
 impl HashTree {
     pub fn new() -> Self {
         let s = HashTree {
-            prefix_count: BTreeMap::<u64,u64>::new(),
             prefix_hash: BTreeMap::<u64,u64>::new(),
-            key_present: BTreeMap::<u64,bool>::new(),
             hash_key: BTreeMap::<u64,u64>::new(),
             key_proof: BTreeMap::<u64,ValueProof>::new(),
         };
@@ -147,14 +143,6 @@ impl HashTree {
         }
     }
 
-    pub fn precount(&self, pre: u64) -> u64 {
-        if self.prefix_hash.contains_key(&pre) {
-            return *self.prefix_count.get(&pre).expect("key not present");
-        } else {
-            return 0;
-        }
-    }
-
     pub fn hashkey(&self, h: u64) -> u64 {
         if self.hash_key.contains_key(&h) {
             return *self.hash_key.get(&h).expect("key not present");
@@ -172,68 +160,61 @@ impl HashTree {
     }
 
     pub fn remove(&mut self, key : u64) {
+        assert!(false);
+
         let vp : &ValueProof = self.key_proof.get(&key).expect("key not present");
 
         let h = vp.h;
         self.hash_key.remove(&vp.h);
-        let k0 = vp.k; // ???
         let k1 = vp.k; // ???
-        self.key_present.remove(&k0);
         self.key_proof.remove(&k1);
 
-        for b in 0..63 {
-            let hpre = (h & ((1 << b) - 1)) | (1 << b);
-            let c = self.prefix_count[&hpre] - 1;
-            *self.prefix_count.entry(hpre).or_insert(0) = c;
-            // println!("inserting b={b} hpre={hpre}");
-        }
-
-        for b in 0..63 {
-            let hpre = (h & ((1 << b) - 1)) | (1 << b);
-            let c = self.prefix_hash[&hpre] ^ h;
-            *self.prefix_hash.entry(hpre).or_insert(0) = c;
+        for b in 0..32 {
+            let hpre = h >> b;
+            if hpre > 0 {
+                let c = self.prehash(hpre) ^ h;
+                *self.prefix_hash.entry(hpre).or_insert(0) = c;
+            }
         }
     }
 
     pub fn insert(&mut self, vp : &ValueProof) {
         let key = vp.k;
 
+        println!("inserting key={key}");
+
         if !vp.is_valid() {
+            println!("NOT VALID key={key}");
             return;
         }
 
         if self.key_proof.contains_key(&key) {
             let oldvp : &ValueProof = self.key_proof.get(&key).expect("key not present");
+            if vp.v == oldvp.v {
+                return;
+            }
             if !vp.worth_more(oldvp) {
                 return;
             }
+
             self.remove(vp.k);
-            // return;
         }
 
         let h = vp.h;
         self.hash_key.insert(h, key);
-        self.key_present.insert(key, true);
         self.key_proof.insert(key, *vp);
 
-        for b in 0..63 {
-            let hpre = (h & ((1 << b) - 1)) | (1 << b);
-            if self.prefix_count.contains_key(&hpre) {
-                let c = self.prefix_count[&hpre] + 1;
-                *self.prefix_count.entry(hpre).or_insert(0) = c;
-            } else {
-                self.prefix_count.insert(hpre, 1);
-            }
-            // println!("inserting b={b} hpre={hpre}");
-        }
-
-        for b in 0..63 {
-            let hpre = (h & ((1 << b) - 1)) | (1 << b);
-            if self.prefix_hash.contains_key(&hpre) {
-                let c = self.prefix_hash[&hpre] ^ h;
-                *self.prefix_hash.entry(hpre).or_insert(0) = c;
-            } else {
-                self.prefix_hash.insert(hpre, h);
+        for b in 0..32 {
+            let hpre = h >> b;
+            if hpre > 0 {
+                if self.prefix_hash.contains_key(&hpre) {
+                    let c = self.prefix_hash[&hpre] ^ h;
+//println!("setting hpre={hpre} c={c}");
+                    *self.prefix_hash.entry(hpre).or_insert(0) = c;
+                } else {
+//println!("setting hpre={hpre} c={h}");
+                    self.prefix_hash.insert(hpre, h);
+                }
             }
         }
     }
