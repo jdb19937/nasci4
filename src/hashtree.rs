@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+const DECAY : f64 = 0.0001;
+const SLACK : u64 = 2;
+
 pub fn hash(key: u64) -> u64 {
     let mkey = key % 4294967291;
     return ((mkey * mkey) % 4294967291) + 1;
@@ -30,20 +33,18 @@ impl ValueProof {
     }
 
     pub fn is_past_time(&self) -> bool {
-        let slack = 2;
         let now: u64 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("AD")
             .as_secs();
-        return self.ts < now + slack;
+        return self.ts < now + SLACK;
     }
     pub fn age(&self) -> i64 {
-        let slack = 2;
         let now: u64 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("AD")
             .as_secs();
-        let dt = (now + slack - self.ts) as i64;
+        let dt = (now + SLACK - self.ts) as i64;
         return dt;
     }
 
@@ -59,11 +60,8 @@ impl ValueProof {
     }
 
     pub fn logwork(&self) -> f64 {
-        // log(1/h * exp(-decay * age))
-        // -log(h) - decay * age
-
-        let decay = 0.0001;
-        //let decay = 1.0;
+        // log(1/h * exp(-DECAY * age))
+        // -log(h) - DECAY * age
 
         let fh = self.h as f64;
         let lfh = f64::ln(fh);
@@ -71,19 +69,16 @@ impl ValueProof {
         let ltop = f64::ln(top);
         let fage = self.age() as f64;
         // println!("fh={fh} lfh={lfh} top={top} ltop={ltop} fage={fage}");
-        return ltop - lfh - decay * fage;
+        return ltop - lfh - DECAY * fage;
     }
 
     pub fn worth_more(&self, other: &ValueProof) -> bool {
-        let decay = 0.0001;
-        //let decay = 1.0;
-
-        // 1/h0 * exp(-decay * (now-t0)) > 1/h1 * exp(-decay * (now-t1))
-        // h1 > h0 * exp(decay * (now-t0) -decay * (now-t1))
-        // h1 > h0 * exp(decay * ((now-t0)-(now-t1))
-        // h1 > h0 * exp(decay * (t1 - t0))
-        // h0 * exp(decay * (t1 - t0)) < h1
-        // log(h0) + decay * dt < log(h1)
+        // 1/h0 * exp(-DECAY * (now-t0)) > 1/h1 * exp(-DECAY * (now-t1))
+        // h1 > h0 * exp(DECAY * (now-t0) -DECAY * (now-t1))
+        // h1 > h0 * exp(DECAY * ((now-t0)-(now-t1))
+        // h1 > h0 * exp(DECAY * (t1 - t0))
+        // h0 * exp(DECAY * (t1 - t0)) < h1
+        // log(h0) + DECAY * dt < log(h1)
 
         let fh0 = self.h as f64;
         let flh0 = f64::ln(fh0);
@@ -94,7 +89,7 @@ impl ValueProof {
         let ft1 = other.ts as f64;
 
         let dt = ft1 - ft0;
-        return flh0 + decay * dt < flh1;
+        return flh0 + DECAY * dt < flh1;
     }
 }
 
