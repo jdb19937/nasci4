@@ -66,9 +66,12 @@ learning rust by writing this key-value store using time-decaying hashcash to es
 	(both integers), and click "set".  The server will
 	compute a proof of work with at least the minlogwork value
 	specified.  For the update to be accepted, this must exceed
-	the old value for the key.  It will be very slow if it is > 15.
+	the old value for the key.  It will be very slow if it is > 15
+	(exp(15) ~ 3269017 expected hashings) and fast if it is < 10
+	(exp(10) ~ 22026 expected hashings).
 
 	After setting a key, click the links at the top to the servers
 	running on different ports to check if replication is working.
 	There is a 10-second update heartbeat and a log at the bottom
-	of each webpage.
+	of each webpage.  After about that amount of time, all servers
+	should be synchronized and showing the same values for each key.
