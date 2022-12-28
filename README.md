@@ -6,9 +6,9 @@ Build:
 	cargo build
 
 Run:
-	target/debug/nasci4 0:5555 > log.0:5555.txt &
-	target/debug/nasci4 0:5556 > log.0:5556.txt &
-	target/debug/nasci4 0:5557 > log.0:5557.txt &
+	./start.sh  # launches 3 instances on ports 5555, 5556, 5557
+        ./fill.sh   # fills instance on 5555 with 50 key-value pairs
+	./stop.sh   # kill all the instances
 
 	point browser at http://localhost:5555/
 	to retrieve the value for a key, click "get"
