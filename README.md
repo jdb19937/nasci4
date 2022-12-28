@@ -10,24 +10,25 @@ About:
 	anything that differs from its own root hash, responds with a
 	request to expand that hash.  When receiving such a request,
 	a node responds with either the hashes of the two children
-	of that node, or if the hash corresponds to a single key-value,
-	that key-value pair itself.  With this method, if there are
-	n keys and k of them are different between two nodes it should
-	take about k*log2(n) interactions for them to synchronize.
+	of that node (which if unknown can trigger subsequent requests),
+	or if the hash corresponds to a single key-value, that key-value pair
+	itself.  With this method, if there are n keys and k of them are
+	different between two nodes it should take about k*log2(n) interactions
+	for them to synchronize.
 
 	Each key-value pair has an associated proof-of-work and timestamp.
-	With a constant decay rate specified, from those there can be computed 
+	With a constant decay rate specified, there can be computed 
 	a priority value used to resolve conflicts,
 
 	priority = exp(-decay * age) / hash
 
-	where decay is a constant frequency, age is a time, and hash is
-	an integer value of the hash function (that the proof-of-work
-	creator attempts to minimize).  The higher the "priority" value,
-	the higher the priority of the update.  This is a consistent ordering
-	across nodes, no matter what is the time skew, because two
-	priorities can be compared using absolute timestamps without
-	reference to the system time.
+	where decay is a constant frequency, age is the time elapsed since
+	the timestamp, and hash is an integer value of the hash function
+	(that the proof-of-work creator attempts to minimize).  The higher
+	the "priority" value, the higher the priority of the update.  This
+	is a consistent ordering across nodes, no matter what is the time
+	skew, because two priorities can be compared using absolute
+	timestamps without reference to the system time.
 
 	The system time is used to ensure that only updates with a
 	timestamp in the past are processed (so if there is a time skew,
@@ -39,7 +40,7 @@ About:
 	time by creating a proof-of-work, because it would require an
 	even harder proof-of-work to immediately override it.
 	With time passing, a key becomes easier to override because
-	its value is decaying with age.
+	its value is decaying.
 
 Build:
 	cargo build
